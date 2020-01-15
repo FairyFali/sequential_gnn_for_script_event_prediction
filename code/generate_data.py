@@ -5,6 +5,9 @@
 # Date:         2020/1/6 08:56
 import torch
 import numpy as np
+import utils
+from utils import DataLoader
+import pickle
 
 def trans_to_mid_data(data, ind = 4):
     '''
@@ -49,3 +52,18 @@ def trans_to_mid_data(data, ind = 4):
 
     return (torch.tensor(new_A), torch.tensor(new_input_data), targets)
 
+if __name__ == '__main__':
+    ind = 7
+    test_data = pickle.load(open('../data/test_8_data.data', 'rb'))
+    trans_test_data = trans_to_mid_data(test_data, ind)
+    pickle.dump(trans_test_data, open('../data/test_{}_data.pkl'.format(ind), 'wb'))
+
+    valid_data = pickle.load(open('../data/valid_8_data.data', 'rb'))
+    trans_valid_data = trans_to_mid_data(valid_data, ind)
+    pickle.dump(trans_valid_data, open('../data/valid_{}_data.pkl'.format(ind), 'wb'))
+
+    train_data = pickle.load(open('../data/train_8_data.data', 'rb'))
+    trans_train_data = trans_to_mid_data(train_data, ind)
+    pickle.dump(trans_train_data, open('../data/train_{}_data.pkl'.format(ind), 'wb'))
+
+    print('finished.')

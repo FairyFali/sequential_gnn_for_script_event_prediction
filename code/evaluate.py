@@ -31,14 +31,13 @@ if __name__ == '__main__':
     config = Config()
 
     if config.data_type == 'origin':
-        test_data = DataLoader(pickle.load(open('../data/corpus_index_test_with_args_all_chain.data', 'rb')))
-        valid_data = DataLoader(pickle.load(open('../data/corpus_index_dev_with_args_all_chain.data', 'rb')))
-        ans_loc = 7 # original data, the index of correct answer is 7(namely 8th)
-    elif config.data_type == 'trans':
-        test_data = DataLoader(pickle.load(open('../data/test_4_data.pkl', 'rb')))
-        valid_data = DataLoader(pickle.load(open('../data/valid_4_data.pkl', 'rb')))
-        ans_loc = 4
+        test_data = DataLoader(pickle.load(open('../data/test_8_data.data', 'rb')))
+        ans_loc = 8 # original data, the index of correct answer is 7(namely 8th)
+    elif 'trans' in config.data_type:
+        ans_loc = int(config.data_type[-1])
+        test_data = DataLoader(pickle.load(open('../data/test_{}_data.pkl'.format(ans_loc), 'rb')))
+    print("ans_loc:{}, data_type:{}, use_lstm:{}, batch_size:{}".format(ans_loc, config.data_type, config.use_lstm, config.batch_size))
     
     test_index = pickle.load(open('../data/test_index.pickle', 'rb'))
-    accuracy = evaluate('../data/sgnn.model', test_data, test_index, ans_loc, config)
+    accuracy = evaluate('../data/sgnn_{}.model'.format(ans_loc), test_data, test_index, ans_loc, config)
     print('best test dataset acc {:.2f}'.format(accuracy))

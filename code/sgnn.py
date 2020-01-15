@@ -7,6 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import math
+import utils
 
 class GNN(nn.Module):
     '''
@@ -16,42 +17,64 @@ class GNN(nn.Module):
         super(GNN, self).__init__()
         self.hidden_size = hidden_size
         self.T = T
-        self.gate_size = 3 * hidden_size
-        self.w_ih = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        self.w_hh = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        self.b_ih = nn.Parameter(torch.Tensor(self.gate_size))
-        self.b_hh = nn.Parameter(torch.Tensor(self.gate_size))
-        self.b_ah = nn.Parameter(torch.Tensor(self.hidden_size))
+        # self.gate_size = 3 * hidden_size
+        # self.w_ih = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
+        # self.w_hh = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
+        # self.b_ih = nn.Parameter(torch.Tensor(self.gate_size))
+        # self.b_hh = nn.Parameter(torch.Tensor(self.gate_size))
+        # self.b_ah = nn.Parameter(torch.Tensor(self.hidden_size))
 
-        self.w_ih_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        self.w_hh_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        self.b_ih_2 = nn.Parameter(torch.Tensor(self.gate_size))
-        self.b_hh_2 = nn.Parameter(torch.Tensor(self.gate_size))
-        self.b_ah_2 = nn.Parameter(torch.Tensor(self.hidden_size))
+        # self.w_ih_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
+        # self.w_hh_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
+        # self.b_ih_2 = nn.Parameter(torch.Tensor(self.gate_size))
+        # self.b_hh_2 = nn.Parameter(torch.Tensor(self.gate_size))
+        # self.b_ah_2 = nn.Parameter(torch.Tensor(self.hidden_size))
 
         # self.dropout=nn.Dropout(dropout_p)
+
+        self.b_ah = nn.Parameter(torch.Tensor(hidden_size))
+        self.w_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_wz = nn.Parameter(torch.Tensor(hidden_size))
+        self.u_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_uz = nn.Parameter(torch.Tensor(hidden_size))
+        self.w_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_wr = nn.Parameter(torch.Tensor(hidden_size))
+        self.u_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_ur = nn.Parameter(torch.Tensor(hidden_size))
+        self.w = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_w = nn.Parameter(torch.Tensor(hidden_size))
+        self.u = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.b_u = nn.Parameter(torch.Tensor(hidden_size))
+
         self.reset_parameters()
 
-    def GNNCell(self, A, hidden, w_ih, w_hh, b_ih, b_hh, b_ah):
-        input = torch.matmul(A.transpose(1, 2), hidden) + b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
-        # input=self.dropout(input)
-        gi = F.linear(input, w_ih, b_ih)  # [batch_size, 节点数量, 3*hidden_size]
-        gh = F.linear(hidden, w_hh, b_hh)  # [batch_size, 节点数量, 3*hidden_size]
-        i_r, i_i, i_n = gi.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
-        h_r, h_i, h_n = gh.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
-        resetgate = F.sigmoid(i_r + h_r)
-        inputgate = F.sigmoid(i_i + h_i)
-        newgate = F.tanh(i_n + resetgate * h_n)  # * 对位相乘
-        hy = newgate + inputgate * (hidden - newgate)
-        # hy=self.dropout(hy)
-        return hy
+    def GNNCell(self, A, hidden):
+        a = torch.matmul(A.transpose(1, 2), hidden) + self.b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
+        z = torch.sigmoid(F.linear(a, self.w_z, self.b_wz) + F.linear(hidden, self.u_z, self.b_uz))  # [batch_size, 节点数量, hidden_size]
+        r = torch.sigmoid(F.linear(a, self.w_r, self.b_wr) + F.linear(hidden, self.u_r, self.b_ur))  # [batch_size, 节点数量, hidden_size]
+        c = torch.tanh(F.linear(a, self.w, self.b_w) + F.linear(r*hidden, self.u, self.b_u))  # [batch_size, 节点数量, hidden_size]
+        h_t = (1-z)*hidden + z*c  # [batch_size, 节点数量, hidden_size]
+
+        return h_t
+
+        # input = torch.matmul(A.transpose(1, 2), hidden) + b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
+        # gi = F.linear(input, w_ih, b_ih)  # [batch_size, 节点数量, 3*hidden_size]
+        # gh = F.linear(hidden, w_hh, b_hh)  # [batch_size, 节点数量, 3*hidden_size]
+        # i_r, i_i, i_n = gi.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
+        # h_r, h_i, h_n = gh.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
+        # resetgate = torch.sigmoid(i_r + h_r)
+        # inputgate = torch.sigmoid(i_i + h_i)
+        # newgate = torch.tanh(i_n + resetgate * h_n)  # * 对位相乘
+        # hy = newgate + inputgate * (hidden - newgate)
+        # # hy=self.dropout(hy)
+        # return hy
 
     def forward(self, A, hidden):
         # 邻接矩阵A的维度应该和hidden的行数一样
         hidden_out = hidden
         for i in range(self.T):
             hidden_in = hidden_out
-            hidden_out = self.GNNCell(A, hidden_in, self.w_ih, self.w_hh, self.b_ih, self.b_hh, self.b_ah)
+            hidden_out = self.GNNCell(A, hidden_in)
         return hidden_out
 
     def reset_parameters(self):
@@ -68,25 +91,27 @@ class SGNN(nn.Module):
         '''
         super(SGNN, self).__init__()
         self.vocab_size = len(word_vec)
-        self.embed_size = config.hidden_dim
-        self.hidden_dim = config.hidden_dim*4
+        self.embed_size = config.hidden_dim # word embedding dimension
+        self.hidden_dim = config.hidden_dim*4 # GNN input dimension
         self.batch_size = config.batch_size
+        self.reverse = config.reverse
+        self.bidirectioinal = config.bidirectional
 
         self.use_lstm = config.use_lstm
 
         self.embedding = nn.Embedding(self.vocab_size, self.embed_size)
         self.embedding.weight.data.copy_(torch.from_numpy(word_vec))
+
+        # GNN Module
+        self.gnn = GNN(self.hidden_dim, config.T)
         # LSTM Module
         if config.bidirectional:
             lstm_hidden_dim = config.hidden_dim*3//2
         else:
             lstm_hidden_dim = config.hidden_dim*3
-        self.left_rnn = nn.LSTM(config.hidden_dim*3, lstm_hidden_dim, num_layers=config.num_layers,
-                                bidirectional=config.bidirectional, dropout=config.dropout_p, batch_first=True)
-        self.right_rnn = nn.LSTM(config.hidden_dim*3, lstm_hidden_dim, num_layers=config.num_layers,
-                                bidirectional=config.bidirectional, dropout=config.dropout_p, batch_first=True)
-        # GNN Module
-        self.gnn = GNN(self.hidden_dim, config.T)
+        self.rnn = nn.LSTM(config.hidden_dim * 3, lstm_hidden_dim, num_layers=1,
+                           bidirectional=config.bidirectional, dropout=config.dropout_p, batch_first=True)
+
         # Attention Module
         attention_input_dim = self.hidden_dim
         ## two fc layers
@@ -118,19 +143,54 @@ class SGNN(nn.Module):
 
         hidden = torch.cat((hidden0_13, hidden13_26, hidden26_39, hidden39_52), dim=2) # [batch_size, 13, 128*4]
         hidden_rnn = torch.cat((hidden13_26, hidden26_39, hidden39_52), dim=2) # [batch_size, 13, 128*3]
+        # hidden_rnn = hidden # [batch_size, 13, 128*4]
         # lstm
         if self.use_lstm:
-            if unk_loc>0 and unk_loc<7:
-                # output,(batch, seq_len, num_directions * hidden_size),
-                # output.view(batch, seq_len, num_directions, hidden_size), with forward and backward being direction 0 and 1 respectively.
-                left_output, _ = self.left_rnn(hidden_rnn[:, 0:unk_loc,:])
-                right_output, _ = self.right_rnn(hidden_rnn[:, unk_loc:8, :])
-                lstm_output = torch.cat((left_output, right_output, hidden_rnn[:,8:,:]), dim=1) # [batch_size, 13, 128*4]
+            if unk_loc>0 and unk_loc<8:
+                left_output, (hl, cl) = self.rnn(hidden_rnn[:, 0:unk_loc, :])
+                if self.reverse:
+                    right_input = hidden_rnn[:, unk_loc:8, :]
+                    idx = [i for i in range(right_input.size(1) - 1, -1, -1)]
+                    idx = utils.trans_to_cuda(torch.LongTensor(idx))
+                    inverted_right_input = right_input.index_select(1, idx)
+                    inverted_right_output, (hr, cr) = self.rnn(inverted_right_input)
+                    right_output = inverted_right_output.index_select(1, idx)
+                else:
+                    right_output, (hr, cr) = self.rnn(hidden_rnn[:, unk_loc:8, :])
+
+                if self.bidirectioinal:
+                    hl_init = hl[-2, :, :] # forward
+                    hr_init = hr[-2, :, :] if self.reverse else hr[-1, :, :]
+                    cl_init = cl[-2, :, :] # forward
+                    cr_init = cr[-2, :, :] if self.reverse else cr[-1, :, :]
+
+                    h_init = torch.cat([torch.unsqueeze(hl_init, 0), torch.unsqueeze(hr_init, 0)], dim=0)
+                    c_init = torch.cat([torch.unsqueeze(cl_init, 0), torch.unsqueeze(cr_init, 0)], dim=0)
+                else:
+                    hl_init = hl[-1, :, :]
+                    hr_init = hr[-1, :, :]
+                    cl_init = cl[-1, :, :]
+                    cr_init = cr[-1, :, :]
+
+                    h_init = torch.unsqueeze(hl_init, 0) if unk_loc>=4 else torch.unsqueeze(hr_init, 0)
+                    c_init = torch.unsqueeze(cl_init, 0) if unk_loc>=4 else torch.unsqueeze(cr_init, 0)
+
+                candidate_output, _ = self.rnn(hidden_rnn[:, 8:, :], (h_init, c_init)) # [batch, 5, hidden_dim]
+
+                lstm_output = torch.cat((left_output, right_output, candidate_output), dim=1) # [batch_size, 13, hidden_dim]
             elif unk_loc==0:
-                right_output, _ = self.right_rnn(hidden_rnn)
+                if self.reverse:
+                    right_input = hidden_rnn[:, :, :]
+                    idx = [i for i in range(right_input.size(1) - 1, -1, -1)]
+                    idx = utils.trans_to_cuda(torch.LongTensor(idx))
+                    inverted_right_input = right_input.index_select(1, idx)
+                    inverted_right_output, _ = self.rnn(inverted_right_input)
+                    right_output = inverted_right_output.index_select(1, idx)
+                else:
+                    right_output, _ = self.rnn(hidden_rnn) # reverse
                 lstm_output = right_output
-            elif unk_loc==7:
-                left_output, _ = self.left_rnn(hidden_rnn)
+            elif unk_loc==8:
+                left_output, _ = self.rnn(hidden_rnn) # init h?, default torch.zeros(shape)
                 lstm_output = left_output
             lstm_output = torch.cat((hidden0_13, lstm_output), dim=2)
         else:
@@ -145,8 +205,8 @@ class SGNN(nn.Module):
         u_b = F.relu(self.linear_u_two(input_b))  # [batch_size, 5, 128*2]
         u_b2 = F.relu(self.linear_u_two2(u_b))  # [batch_size, 5, 1]
         u_c = torch.add(u_a2.view(5 * len(gnn_output), 8), u_b2.view(5 * len(gnn_output), 1))  # [5*batch_size, 8]
-        weight = torch.exp(F.tanh(u_c))
-        weight = (weight / torch.sum(weight, 1).view(-1, 1)).view(-1, 8, 1)
+        weight = torch.exp(torch.tanh(u_c))
+        weight = (weight / torch.sum(weight, 1).view(-1, 1)).view(-1, 8, 1) # [5*batch_size, 8]
         weighted_input = torch.mul(input_a, weight)  # 对位相乘
         a = torch.sum(weighted_input, 1)  # [5*batch_size, 128*4]
         b = input_b / 8.0
@@ -176,5 +236,5 @@ class SGNN(nn.Module):
 
 
     def metric_euclid(self, v0, v1):
-        return -torch.norm(v0-v1, 2, 1).view(-1,5)
+        return -torch.norm(v0-v1, 2, 1).view(-1,5) # input, p='fro', dim=None, keepdim=False, out=None, dtype=None
 
