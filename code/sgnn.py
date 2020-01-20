@@ -8,66 +8,71 @@ from torch import nn
 import torch.nn.functional as F
 import math
 import utils
+import sys
+import pickle
 
 class GNN(nn.Module):
     '''
     Graph Neual Netword
     '''
-    def __init__(self, hidden_size, T):
+    def __init__(self, hidden_size, T, unit_type):
         super(GNN, self).__init__()
         self.hidden_size = hidden_size
         self.T = T
-        # self.gate_size = 3 * hidden_size
-        # self.w_ih = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        # self.w_hh = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        # self.b_ih = nn.Parameter(torch.Tensor(self.gate_size))
-        # self.b_hh = nn.Parameter(torch.Tensor(self.gate_size))
-        # self.b_ah = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.unit_type = unit_type
 
-        # self.w_ih_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        # self.w_hh_2 = nn.Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        # self.b_ih_2 = nn.Parameter(torch.Tensor(self.gate_size))
-        # self.b_hh_2 = nn.Parameter(torch.Tensor(self.gate_size))
-        # self.b_ah_2 = nn.Parameter(torch.Tensor(self.hidden_size))
-
-        # self.dropout=nn.Dropout(dropout_p)
-
-        self.b_ah = nn.Parameter(torch.Tensor(hidden_size))
-        self.w_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_wz = nn.Parameter(torch.Tensor(hidden_size))
-        self.u_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_uz = nn.Parameter(torch.Tensor(hidden_size))
-        self.w_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_wr = nn.Parameter(torch.Tensor(hidden_size))
-        self.u_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_ur = nn.Parameter(torch.Tensor(hidden_size))
-        self.w = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_w = nn.Parameter(torch.Tensor(hidden_size))
-        self.u = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
-        self.b_u = nn.Parameter(torch.Tensor(hidden_size))
+        if unit_type == 'gru':
+            self.b_ah = nn.Parameter(torch.Tensor(hidden_size))
+            self.w_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_wz = nn.Parameter(torch.Tensor(hidden_size))
+            self.u_z = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_uz = nn.Parameter(torch.Tensor(hidden_size))
+            self.w_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_wr = nn.Parameter(torch.Tensor(hidden_size))
+            self.u_r = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_ur = nn.Parameter(torch.Tensor(hidden_size))
+            self.w = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_w = nn.Parameter(torch.Tensor(hidden_size))
+            self.u = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_u = nn.Parameter(torch.Tensor(hidden_size))
+        elif unit_type == 'lstm':
+            self.b_ah = nn.Parameter(torch.Tensor(hidden_size))
+            # forget gate
+            self.w_f = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.u_f = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_f = nn.Parameter(torch.Tensor(hidden_size))
+            # input gate
+            self.w_i = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.u_i = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_i = nn.Parameter(torch.Tensor(hidden_size))
+            # output gate
+            self.w_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.u_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_o = nn.Parameter(torch.Tensor(hidden_size))
+            # cell candidation
+            self.w_c = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.u_c = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            self.b_c = nn.Parameter(torch.Tensor(hidden_size))
 
         self.reset_parameters()
 
     def GNNCell(self, A, hidden):
-        a = torch.matmul(A.transpose(1, 2), hidden) + self.b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
-        z = torch.sigmoid(F.linear(a, self.w_z, self.b_wz) + F.linear(hidden, self.u_z, self.b_uz))  # [batch_size, 节点数量, hidden_size]
-        r = torch.sigmoid(F.linear(a, self.w_r, self.b_wr) + F.linear(hidden, self.u_r, self.b_ur))  # [batch_size, 节点数量, hidden_size]
-        c = torch.tanh(F.linear(a, self.w, self.b_w) + F.linear(r*hidden, self.u, self.b_u))  # [batch_size, 节点数量, hidden_size]
-        h_t = (1-z)*hidden + z*c  # [batch_size, 节点数量, hidden_size]
+        if self.unit_type == 'gru':
+            a = torch.matmul(A.transpose(1, 2), hidden) + self.b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
+            z = torch.sigmoid(F.linear(a, self.w_z, self.b_wz) + F.linear(hidden, self.u_z, self.b_uz))  # [batch_size, 节点数量, hidden_size]
+            r = torch.sigmoid(F.linear(a, self.w_r, self.b_wr) + F.linear(hidden, self.u_r, self.b_ur))  # [batch_size, 节点数量, hidden_size]
+            c = torch.tanh(F.linear(a, self.w, self.b_w) + F.linear(r*hidden, self.u, self.b_u))  # [batch_size, 节点数量, hidden_size]
+            h_t = (1-z)*hidden + z*c  # [batch_size, 节点数量, hidden_size]
+        elif self.unit_type == 'lstm':
+            a = torch.matmul(A.transpose(1, 2), hidden) + self.b_ah
+            f = torch.sigmoid(F.linear(a, self.w_f) + F.linear(hidden, self.u_f) + self.b_f)
+            i = torch.sigmoid(F.linear(a, self.w_i) + F.linear(hidden, self.u_i) + self.b_i)
+            o = torch.sigmoid(F.linear(a, self.w_o) + F.linear(hidden, self.u_f) + self.b_o)
+            c_cand = torch.tanh(F.linear(a, self.w_c) + F.linear(hidden, self.u_c) + self.b_c)
+            c = f*a + i*c_cand
+            h_t = o * torch.tanh(c)
 
         return h_t
-
-        # input = torch.matmul(A.transpose(1, 2), hidden) + b_ah  # A^T * h, [batch_size, 节点数量, hidden_size]
-        # gi = F.linear(input, w_ih, b_ih)  # [batch_size, 节点数量, 3*hidden_size]
-        # gh = F.linear(hidden, w_hh, b_hh)  # [batch_size, 节点数量, 3*hidden_size]
-        # i_r, i_i, i_n = gi.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
-        # h_r, h_i, h_n = gh.chunk(3, 2)  # [batch_size, 节点数量, hidden_size]
-        # resetgate = torch.sigmoid(i_r + h_r)
-        # inputgate = torch.sigmoid(i_i + h_i)
-        # newgate = torch.tanh(i_n + resetgate * h_n)  # * 对位相乘
-        # hy = newgate + inputgate * (hidden - newgate)
-        # # hy=self.dropout(hy)
-        # return hy
 
     def forward(self, A, hidden):
         # 邻接矩阵A的维度应该和hidden的行数一样
@@ -98,12 +103,14 @@ class SGNN(nn.Module):
         self.bidirectioinal = config.bidirectional
 
         self.use_lstm = config.use_lstm
+        self.use_attention = config.use_attention
+        self.left_to_right = config.left_to_right
 
         self.embedding = nn.Embedding(self.vocab_size, self.embed_size)
         self.embedding.weight.data.copy_(torch.from_numpy(word_vec))
 
         # GNN Module
-        self.gnn = GNN(self.hidden_dim, config.T)
+        self.gnn = GNN(self.hidden_dim, config.T, config.unit_type)
         # LSTM Module
         if config.bidirectional:
             lstm_hidden_dim = config.hidden_dim*3//2
@@ -153,10 +160,16 @@ class SGNN(nn.Module):
                     idx = [i for i in range(right_input.size(1) - 1, -1, -1)]
                     idx = utils.trans_to_cuda(torch.LongTensor(idx))
                     inverted_right_input = right_input.index_select(1, idx)
-                    inverted_right_output, (hr, cr) = self.rnn(inverted_right_input)
+                    if self.left_to_right:
+                        inverted_right_output, (hr, cr) = self.rnn(inverted_right_input, (hl, cl))
+                    else:
+                        inverted_right_output, (hr, cr) = self.rnn(inverted_right_input)
                     right_output = inverted_right_output.index_select(1, idx)
                 else:
-                    right_output, (hr, cr) = self.rnn(hidden_rnn[:, unk_loc:8, :])
+                    if self.left_to_right:
+                        right_output, (hr, cr) = self.rnn(hidden_rnn[:, unk_loc:8, :], (hl, cl))
+                    else:
+                        right_output, (hr, cr) = self.rnn(hidden_rnn[:, unk_loc:8, :])
 
                 if self.bidirectioinal:
                     hl_init = hl[-2, :, :] # forward
@@ -200,13 +213,18 @@ class SGNN(nn.Module):
         # attention
         input_a = gnn_output[:, 0:8, :].repeat(1,5,1).view(5*len(gnn_output), 8, -1) # [5*batch_size, 8, 128*4]
         input_b = gnn_output[:, 8:13, :] # [batch_size, 5, 128*4]
-        u_a = F.relu(self.linear_u_one(input_a))  # [5*batch_size, 8, 128*2]
-        u_a2 = F.relu(self.linear_u_one2(u_a))  # [5*batch_size, 8, 1]
-        u_b = F.relu(self.linear_u_two(input_b))  # [batch_size, 5, 128*2]
-        u_b2 = F.relu(self.linear_u_two2(u_b))  # [batch_size, 5, 1]
-        u_c = torch.add(u_a2.view(5 * len(gnn_output), 8), u_b2.view(5 * len(gnn_output), 1))  # [5*batch_size, 8]
-        weight = torch.exp(torch.tanh(u_c))
-        weight = (weight / torch.sum(weight, 1).view(-1, 1)).view(-1, 8, 1) # [5*batch_size, 8]
+        if self.use_attention:
+            u_a = F.relu(self.linear_u_one(input_a))  # [5*batch_size, 8, 128*2]
+            u_a2 = F.relu(self.linear_u_one2(u_a))  # [5*batch_size, 8, 1]
+            u_b = F.relu(self.linear_u_two(input_b))  # [batch_size, 5, 128*2]
+            u_b2 = F.relu(self.linear_u_two2(u_b))  # [batch_size, 5, 1]
+            u_c = torch.add(u_a2.view(5 * len(gnn_output), 8), u_b2.view(5 * len(gnn_output), 1))  # [5*batch_size, 8]
+            weight = torch.exp(torch.tanh(u_c))
+            weight = (weight / torch.sum(weight, 1).view(-1, 1)).view(-1, 8, 1) # [5*batch_size, 8, 1]
+            # print(weight)
+        else:
+            weight = utils.trans_to_cuda(torch.ones((5*len(gnn_output), 8), requires_grad=False))
+            weight = (weight / torch.sum(weight, 1).view(-1, 1)).view(-1, 8, 1)  # [5*batch_size, 8, 1]
         weighted_input = torch.mul(input_a, weight)  # 对位相乘
         a = torch.sum(weighted_input, 1)  # [5*batch_size, 128*4]
         b = input_b / 8.0
@@ -218,7 +236,7 @@ class SGNN(nn.Module):
         return scores
 
 
-    def evaluate(self, A, input, targets, unk_loc, dev_index, metric='euclid'):
+    def evaluate(self, A, input, targets, unk_loc, dev_index, metric='euclid', dest = sys.stdout):
         '''
         Calculate model accuracy.
         :return: accuracy
@@ -229,6 +247,11 @@ class SGNN(nn.Module):
             for index in dev_index:
                 scores[index] = -100.0
         _, L = torch.sort(scores, descending=True)
+        if dest != sys.stdout:
+            pred = L[:, 0].tolist()
+            y = targets.tolist()
+            pickle.dump((pred, y), dest)
+            # dest.close()
         num_correct = torch.sum(L[:, 0] == targets).type(torch.FloatTensor)
         batch_size = len(targets)
         accuracy = num_correct/batch_size * 100.0

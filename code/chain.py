@@ -12,6 +12,7 @@ import pickle
 import argparse
 import time
 from torch.autograd import Variable
+import sys
 
 HIDDEN_DIM = 128*4
 L2_penalty = 1e-8
@@ -181,10 +182,14 @@ class EventChain(nn.Module):
         scores=self.compute_scores(rnn_output)
         return scores
 
-    def evaluate(self, input, targets, unk_loc):
+    def evaluate(self, input, targets, unk_loc, dest=sys.stdout):
         with torch.no_grad():
             scores = self.forward(input, unk_loc)
         _, L = torch.sort(scores,descending=True)
+        if dest != sys.stdout:
+            pred = L[:, 0].tolist()
+            y = targets.tolist()
+            pickle.dump((pred, y), dest)
         num_correct = torch.sum((L[:,0] == targets).type(torch.FloatTensor))
         samples = len(targets)
         accuracy = num_correct / samples *100.0
@@ -192,6 +197,7 @@ class EventChain(nn.Module):
 
 
 def train(model, ans_loc, train_data, valid_data):
+    acc_list = []
     best_acc = 0.
     print('starting train.')
     start = time.time()
@@ -216,6 +222,7 @@ def train(model, ans_loc, train_data, valid_data):
             A, input_data, targets = valid_data.all_data()
             model.eval()
             accuracy = model.evaluate(input_data, targets, ans_loc)
+            acc_list.append((time.time()-start, accuracy.item()))
             # print
             if iter % 50 == 0:
                 print("iter", iter, ', eval acc', accuracy.item())
@@ -234,11 +241,12 @@ def train(model, ans_loc, train_data, valid_data):
             break
 
     print('train finished. Best acc {:.2f}, Epoch {}, Time {}'.format(best_acc, epoch, time.time()-start))
+    pickle.dump(acc_list, open('../data/event_chain_{}_acc_list.pickle'.format(ans_loc), 'wb'))
     model.eval()
 
     return best_acc
 
-def evaluate(model_file, data, ans_loc):
+def evaluate(model_file, data, ans_loc, save_results=False):
     '''
     evaluate the data by the model file.
     :param model_file:
@@ -249,9 +257,15 @@ def evaluate(model_file, data, ans_loc):
     model = utils.trans_to_cuda(EventChain(embedding_dim=HIDDEN_DIM//4, hidden_dim=HIDDEN_DIM, vocab_size=len(word_vec), word_vec=word_vec, num_layers=1, bidirectional=bidirectional_g))
     model.load_state_dict(torch.load(model_file))
 
+    if save_results:
+        filename = model_file[:model_file.rindex('.')] + '_result.pkl'
+        dest = open('../data/'+filename, 'wb')
+    else:
+        dest = sys.stdout
+
     model.eval()
     A, input_data, targets = data.all_data()
-    accuracy = model.evaluate(input_data, targets, ans_loc)
+    accuracy = model.evaluate(input_data, targets, ans_loc, dest=dest)
 
     return accuracy
 
@@ -286,7 +300,7 @@ if __name__ == '__main__':
         model = utils.trans_to_cuda(EventChain(embedding_dim=HIDDEN_DIM//4, hidden_dim=HIDDEN_DIM, vocab_size=len(word_vec), word_vec=word_vec, num_layers=1, bidirectional=bidirectional_g))
         best_acc = train(model, ans_loc, train_data, valid_data)
     elif mode == 'test':
-        accuracy = evaluate('../data/event_chain_{}.model'.format(ans_loc), test_data, ans_loc)
+        accuracy = evaluate('../data/event_chain_{}.model'.format(ans_loc), test_data, ans_loc, save_results=True)
         print('best test dataset acc {:.2f}'.format(accuracy))
 
 

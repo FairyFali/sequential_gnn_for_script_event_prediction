@@ -22,6 +22,25 @@ def trans_to_cuda(variable):
 
     # return variable
 
+def get_filename(config, ans_loc):
+    '''
+    Get the file name according to the configuration
+    :param config:
+    :param ans_loc:
+    :return:
+    '''
+    if config.use_lstm:
+        if config.bidirectional:
+            use_lstm = 'bilstm'
+        else:
+            use_lstm = 'lstm'
+    else:
+        use_lstm = 'nolstm'
+    use_attention = 'att' if config.use_attention else 'noatt'
+    unit_type = config.unit_type
+    filename = 'sgnn_' + use_lstm + '_' + use_attention + '_' + unit_type + '_' + str(ans_loc)
+    return filename
+
 def id_to_vec(embed_file):
     '''
     read word embedding from file
